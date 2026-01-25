@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Select Stack</title>
+  <style>
+    body { font-family: sans-serif; padding: 40px }
+    button { margin: 10px; padding: 15px 30px; font-size: 18px }
+  </style>
+</head>
+<body>
+  <h1>Select Development Stack</h1>
+
+  <button onclick="start('node')">Node.js</button>
+  <button onclick="start('java')">Java</button>
+  <button onclick="start('dotnet')">.NET</button>
+
+  <script>
+    function start(stack) {
+      fetch(`/start/${stack}`)
+        .then(res => res.json())
+        .then(data => {
+          window.location.href = data.url;
+        });
+    }
+  </script>
+</body>
+</html>

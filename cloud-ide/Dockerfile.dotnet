@@ -1,0 +1,140 @@
+# gcr.io/examly-dev/vscodedotnet6.0
+
+FROM codercom/code-server:latest
+RUN lsb_release -a
+RUN sudo apt-get update && sudo apt-get --no-install-recommends install -y software-properties-common wget python3-pip curl git && sudo apt-get clean
+RUN mkdir -p /home/coder/project
+RUN sudo apt-get update && \
+    sudo apt-get install -y python3 python3-pip python3-venv && \
+    sudo apt-get clean
+EXPOSE 3000 8081 8080
+# ENV PORT 3000
+USER root
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+# Install software packages
+# nvm environment variables
+ENV NVM_DIR /usr/local/nvm
+ENV NODE_VERSION_12 12.22.1
+ENV NODE_VERSION_14 14.17.1
+ENV NODE_VERSION_16 16.4.0
+ENV NODE_VERSION_18 18.20.4
+ENV NODE_VERSION_20 20.9.0
+# install nvm
+# https://github.com/creationix/nvm#install-script
+RUN curl --silent -o- https://raw.githubusercontent.com/creationix/nvm/v0.31.2/install.sh | bash
+
+# install node and npm
+
+RUN source "$NVM_DIR"/nvm.sh \
+    && nvm install "$NODE_VERSION_12" \
+    && nvm install "$NODE_VERSION_14" \
+    && nvm install "$NODE_VERSION_16" \
+    && nvm install "$NODE_VERSION_18" \
+    && nvm install "$NODE_VERSION_20" \
+    && nvm alias default "$NODE_VERSION_14" \
+    && nvm use default
+# add node and npm to path so the commands are available
+ENV NODE_PATH $NVM_DIR/v$NODE_VERSION_14/lib/node_modules
+ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION_14/bin:$PATH
+# confirm installation
+RUN node -v
+RUN wget --max-redirect=0 https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+RUN dpkg -i packages-microsoft-prod.deb
+RUN rm packages-microsoft-prod.deb
+
+# Add the Microsoft package repository for ARM64
+RUN echo "deb [arch=arm64] https://packages.microsoft.com/debian/11/prod bullseye main" > /etc/apt/sources.list.d/microsoft-prod.list
+
+# Install required dependencies including ICU
+RUN apt-get update && \
+    apt-get install -y \
+    libicu-dev \
+    libicu67 \
+    && apt-get clean
+
+# Install .NET SDK using the official Microsoft installation script
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --version 6.0.419 --install-dir /usr/share/dotnet
+RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
+
+# Set environment variables
+ENV DOTNET_ROOT=/usr/share/dotnet
+ENV PATH=$PATH:/usr/share/dotnet
+
+# Verify installation
+RUN dotnet --version
+
+# Remove the SQL Server tools installation section since it's not compatible with ARM64
+
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+RUN sudo apt-get update && \ 
+    sudo apt -y install zip && \ 
+    sudo apt install unzip &&\
+    apt-get clean 
+
+RUN sudo apt --no-install-recommends install -y apt-transport-https dirmngr gnupg ca-certificates && sudo apt-get clean
+
+RUN sudo apt install -y apt-transport-https dirmngr gnupg ca-certificates
+RUN sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+RUN echo "deb https://download.mono-project.com/repo/debian stable-buster main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
+RUN sudo apt-get --no-install-recommends -y install mono-devel && sudo apt-get clean
+RUN sudo curl -o /usr/local/bin/nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
+RUN sudo apt-get update -y && sudo apt-get clean
+RUN sudo apt-get --no-install-recommends install -y nunit && sudo apt-get clean
+COPY ../common/config.yaml /home/coder/.config/code-server/
+
+# RUN chown -R coder:coder /home/coder/.config
+# RUN sudo echo "coder:neouser@123" | chpasswd
+# RUN sudo usermod -aG sudo coder
+# RUN sudo rm /etc/sudoers.d/nopasswd
+RUN apt-get install chromium -y &&\
+    apt-get clean 
+ENV CHROME_BIN=/usr/bin/chromium
+RUN echo "export CHROME_BIN=/usr/bin/chromium" >> /home/coder/.bashrc
+# Adding Extensions
+# COPY ../common/extensions/afmicc.GetterAndSetterGenerator-1.0.3.vsix /tmp/afmicc.GetterAndSetterGenerator-1.0.3.vsix
+# COPY ../common/extensions/kreativ-software.csharpextensions-1.7.3.vsix /tmp/kreativ-software.csharpextensions-1.7.3.vsix
+# COPY ../common/extensions/ms-dotnettools.vscode-dotnet-runtime-2.0.3.vsix /tmp/ms-dotnettools.vscode-dotnet-runtime-2.0.3.vsix
+# COPY ../common/extensions/cweijan.vscode-mysql-client2-7.0.4.vsix /tmp/cweijan.vscode-mysql-client2-7.0.4.vsix
+# COPY ../common/extensions/muhammad-sammy.csharp-2.23.15.vsix /tmp/muhammad-sammy.csharp-2.23.15.vsix
+# COPY ../common/extensions/vscode-thunder-client-2.20.0.vsix /tmp/vscode-thunder-client-2.20.0.vsix
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+USER coder
+COPY ../api /opt/myantigravity-backend
+# RUN pip3 install --no-cache-dir -r /opt/myantigravity-backend/requirements.txt
+RUN python3 -m venv /home/coder/.venv && \
+    /home/coder/.venv/bin/pip install --no-cache-dir \
+    -r /opt/myantigravity-backend/requirements.txt
+    
+COPY ../common/myantigravity-0.0.1.vsix /tmp/myantigravity-0.0.1.vsix
+RUN code-server --install-extension /tmp/myantigravity-0.0.1.vsix
+RUN code-server --install-extension angular.ng-template
+RUN code-server --install-extension dsznajder.es7-react-js-snippets
+RUN code-server --install-extension johnpapa.Angular2
+RUN code-server --install-extension /tmp/afmicc.GetterAndSetterGenerator-1.0.3.vsix
+RUN code-server --install-extension /tmp/kreativ-software.csharpextensions-1.7.3.vsix
+RUN code-server --install-extension /tmp/cweijan.vscode-mysql-client2-7.0.4.vsix
+RUN code-server --install-extension /tmp/ms-dotnettools.vscode-dotnet-runtime-2.0.3.vsix
+RUN code-server --install-extension /tmp/muhammad-sammy.csharp-2.23.15.vsix
+RUN code-server --install-extension /tmp/vscode-thunder-client-2.20.0.vsix
+
+# Injecting js file
+# COPY ./modification/* /usr/lib/code-server/lib/vscode/out/vs/code/browser/workbench/
+
+#Changing the user Permission here for removing the tmp files 
+RUN echo 'alias nuget="mono /usr/local/bin/nuget.exe"' >> ~/.bashrc
+
+WORKDIR /home/coder/project/workspace
+ENV PATH /opt/mssql-tools/bin/:$PATH
+ENV PATH /node_modules/karma-cli/bin:$PATH
+ENV SHELL /bin/bash
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bash_profile
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+RUN source ~/.bashrc
+RUN echo "source $NVM_DIR/nvm.sh" >> ~/.bashrc
+COPY ../common/.gitignore /home/coder/.gitignore
+RUN git config --global core.excludesFile '~/.gitignore'
+# ENTRYPOINT dumb-init fixuid -q /usr/bin/code-server --auth none --bind-addr 0.0.0.0:3000 /home/coder/project/workspace
+EXPOSE 3000 8081 8080
+ENTRYPOINT ["/usr/local/bin/start.sh"]

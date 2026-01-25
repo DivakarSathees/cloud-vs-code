@@ -1,0 +1,35 @@
+FROM codercom/code-server:latest
+
+USER root
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest
+RUN sudo apt-get update && \
+    sudo apt-get install -y python3 python3-pip python3-venv && \
+    sudo apt-get clean
+
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+USER coder
+COPY ../api /opt/myantigravity-backend
+# RUN pip3 install --no-cache-dir -r /opt/myantigravity-backend/requirements.txt
+RUN python3 -m venv /home/coder/.venv && \
+    /home/coder/.venv/bin/pip install --no-cache-dir \
+    -r /opt/myantigravity-backend/requirements.txt
+
+# Install custom VS Code extension
+COPY ../common/myantigravity-0.0.1.vsix /tmp/myantigravity-0.0.1.vsix
+RUN code-server --install-extension /tmp/myantigravity-0.0.1.vsix
+
+RUN mkdir -p /home/coder/.config/code-server && \
+    echo "bind-addr: 0.0.0.0:3002\n\
+auth: none" \
+    > /home/coder/.config/code-server/config.yaml
+
+WORKDIR /home/coder/project/workspace
+EXPOSE 3002 8081 8080
+ENTRYPOINT ["/usr/local/bin/start.sh"]
+

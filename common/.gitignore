@@ -1,0 +1,45 @@
+#test case files
+junit
+karma
+react
+puppeteer
+screenshots
+shell
+nunit
+nodejest
+jasmine
+selenium
+cucmber
+pytest
+
+# Ignore node modules
+node_modules
+
+# Git Build files
+/pom.xml
+sonar-project.properties
+.github
+ 
+# Dotnet Testcase folder files
+bin
+obj
+
+# Ignore temp files
+core.*
+
+# Ignore done file
+.done
+
+# Dotnet Testcase folder files
+bin
+obj
+
+#vscode 
+.vscode
+.theia
+
+# Playwright
+test-results
+blob-report
+.cache
+.auth
