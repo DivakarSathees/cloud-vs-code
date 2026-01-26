@@ -24,6 +24,8 @@ RUN sudo rm /etc/sudoers.d/nopasswd
 RUN sudo apt-get update && \
     sudo apt-get install -y python3 python3-pip python3-venv && \
     sudo apt-get clean
+RUN apt-get update && apt-get install -y gh && apt-get clean
+
 
 # Install software packages
 # nvm environment variables
@@ -64,7 +66,9 @@ RUN apt-get install chromium -y
 ENV CHROME_BIN=/usr/bin/chromium
 RUN echo "export CHROME_BIN=/usr/bin/chromium" >> /home/coder/.bashrc
 COPY start.sh /usr/local/bin/start.sh
-RUN chmod +x /usr/local/bin/start.sh
+# RUN chmod +x /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh && \
+    chown coder:coder /usr/local/bin/start.sh
 
 USER coder
 
@@ -75,8 +79,8 @@ RUN python3 -m venv /home/coder/.venv && \
     -r /opt/myantigravity-backend/requirements.txt
 
 
-COPY ../common/myantigravity-0.0.1.vsix /tmp/myantigravity-0.0.1.vsix
-RUN code-server --install-extension /tmp/myantigravity-0.0.1.vsix
+COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
 
 RUN code-server --install-extension vscjava.vscode-spring-initializr
 RUN code-server --install-extension Angular.ng-template
@@ -84,14 +88,14 @@ RUN code-server --install-extension cweijan.vscode-mysql-client2
 RUN code-server --install-extension dsznajder.es7-react-js-snippets
 RUN code-server --install-extension johnpapa.angular2
 # RUN code-server --install-extension pivotal.vscode-boot-dev-pack
-RUN code-server --install-extension redhat.java
+# RUN code-server --install-extension redhat.java
 RUN code-server --install-extension sonarsource.sonarlint-vscode
 # RUN code-server --install-extension VisualStudioExptTeam.vscodeintellicode
 RUN code-server --install-extension vscjava.vscode-java-debug
 RUN code-server --install-extension vscjava.vscode-java-dependency
 RUN code-server --install-extension vscjava.vscode-maven
-RUN code-server --install-extension vscjava.vscode-java-pack
-RUN code-server --install-extension vscjava.vscode-java-test
+# RUN code-server --install-extension vscjava.vscode-java-pack
+# RUN code-server --install-extension vscjava.vscode-java-test
 RUN code-server --install-extension rangav.vscode-thunder-client
 # RUN mkdir -p /home/coder/.config/code-server && \
 #     echo "bind-addr: 0.0.0.0:8080\
@@ -107,7 +111,9 @@ ENV PATH /node_modules/karma-cli/bin:$PATH
 ENV SHELL /bin/bash
 RUN echo "source $NVM_DIR/nvm.sh" >> ~/.bashrc 
 EXPOSE 8080 3000 8081
-ENTRYPOINT ["/usr/local/bin/start.sh"]
+# ENTRYPOINT ["/usr/local/bin/start.sh"]
+ENTRYPOINT ["/bin/bash", "/usr/local/bin/start.sh"]
+
 
 
 # ENTRYPOINT dumb-init fixuid -q /usr/bin/code-server --auth none --disable-file-downloads --disable-file-uploads --bind-addr 0.0.0.0:3000 /home/coder/project/workspace 

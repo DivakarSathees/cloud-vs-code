@@ -46,11 +46,11 @@ RUN rm packages-microsoft-prod.deb
 RUN echo "deb [arch=arm64] https://packages.microsoft.com/debian/11/prod bullseye main" > /etc/apt/sources.list.d/microsoft-prod.list
 
 # Install required dependencies including ICU
-RUN apt-get update && \
-    apt-get install -y \
-    libicu-dev \
-    libicu67 \
-    && apt-get clean
+# RUN apt-get update && \
+#     apt-get install -y \
+#     libicu-dev \
+#     libicu67 \
+#     && apt-get clean
 
 # Install .NET SDK using the official Microsoft installation script
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --version 6.0.419 --install-dir /usr/share/dotnet
@@ -97,6 +97,8 @@ RUN echo "export CHROME_BIN=/usr/bin/chromium" >> /home/coder/.bashrc
 # COPY ../common/extensions/cweijan.vscode-mysql-client2-7.0.4.vsix /tmp/cweijan.vscode-mysql-client2-7.0.4.vsix
 # COPY ../common/extensions/muhammad-sammy.csharp-2.23.15.vsix /tmp/muhammad-sammy.csharp-2.23.15.vsix
 # COPY ../common/extensions/vscode-thunder-client-2.20.0.vsix /tmp/vscode-thunder-client-2.20.0.vsix
+RUN apt-get update && apt-get install -y gh && apt-get clean
+
 COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 
@@ -107,17 +109,17 @@ RUN python3 -m venv /home/coder/.venv && \
     /home/coder/.venv/bin/pip install --no-cache-dir \
     -r /opt/myantigravity-backend/requirements.txt
     
-COPY ../common/myantigravity-0.0.1.vsix /tmp/myantigravity-0.0.1.vsix
-RUN code-server --install-extension /tmp/myantigravity-0.0.1.vsix
+COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
 RUN code-server --install-extension angular.ng-template
 RUN code-server --install-extension dsznajder.es7-react-js-snippets
 RUN code-server --install-extension johnpapa.Angular2
-RUN code-server --install-extension /tmp/afmicc.GetterAndSetterGenerator-1.0.3.vsix
-RUN code-server --install-extension /tmp/kreativ-software.csharpextensions-1.7.3.vsix
-RUN code-server --install-extension /tmp/cweijan.vscode-mysql-client2-7.0.4.vsix
-RUN code-server --install-extension /tmp/ms-dotnettools.vscode-dotnet-runtime-2.0.3.vsix
-RUN code-server --install-extension /tmp/muhammad-sammy.csharp-2.23.15.vsix
-RUN code-server --install-extension /tmp/vscode-thunder-client-2.20.0.vsix
+# RUN code-server --install-extension /tmp/afmicc.GetterAndSetterGenerator-1.0.3.vsix
+# RUN code-server --install-extension /tmp/kreativ-software.csharpextensions-1.7.3.vsix
+# RUN code-server --install-extension /tmp/cweijan.vscode-mysql-client2-7.0.4.vsix
+# RUN code-server --install-extension /tmp/ms-dotnettools.vscode-dotnet-runtime-2.0.3.vsix
+# RUN code-server --install-extension /tmp/muhammad-sammy.csharp-2.23.15.vsix
+# RUN code-server --install-extension /tmp/vscode-thunder-client-2.20.0.vsix
 
 # Injecting js file
 # COPY ./modification/* /usr/lib/code-server/lib/vscode/out/vs/code/browser/workbench/
@@ -137,4 +139,5 @@ COPY ../common/.gitignore /home/coder/.gitignore
 RUN git config --global core.excludesFile '~/.gitignore'
 # ENTRYPOINT dumb-init fixuid -q /usr/bin/code-server --auth none --bind-addr 0.0.0.0:3000 /home/coder/project/workspace
 EXPOSE 3000 8081 8080
-ENTRYPOINT ["/usr/local/bin/start.sh"]
+ENTRYPOINT ["/bin/bash", "/usr/local/bin/start.sh"]
+# ENTRYPOINT ["/usr/local/bin/start.sh"]

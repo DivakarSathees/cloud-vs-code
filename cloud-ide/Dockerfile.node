@@ -9,9 +9,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN sudo apt-get update && \
     sudo apt-get install -y python3 python3-pip python3-venv && \
     sudo apt-get clean
+RUN apt-get update && apt-get install -y gh && apt-get clean
+
 
 COPY start.sh /usr/local/bin/start.sh
-RUN chmod +x /usr/local/bin/start.sh
+# RUN chmod +x /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh && \
+    chown coder:coder /usr/local/bin/start.sh
 
 USER coder
 COPY ../api /opt/myantigravity-backend
@@ -21,8 +25,8 @@ RUN python3 -m venv /home/coder/.venv && \
     -r /opt/myantigravity-backend/requirements.txt
 
 # Install custom VS Code extension
-COPY ../common/myantigravity-0.0.1.vsix /tmp/myantigravity-0.0.1.vsix
-RUN code-server --install-extension /tmp/myantigravity-0.0.1.vsix
+COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
 
 RUN mkdir -p /home/coder/.config/code-server && \
     echo "bind-addr: 0.0.0.0:3002\n\
@@ -31,5 +35,5 @@ auth: none" \
 
 WORKDIR /home/coder/project/workspace
 EXPOSE 3002 8081 8080
-ENTRYPOINT ["/usr/local/bin/start.sh"]
+ENTRYPOINT ["/bin/bash", "/usr/local/bin/start.sh"]
 
