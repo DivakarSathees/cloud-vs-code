@@ -10,6 +10,10 @@ RUN sudo apt-get update && \
     sudo apt-get install -y python3 python3-pip python3-venv && \
     sudo apt-get clean
 RUN apt-get update && apt-get install -y gh && apt-get clean
+RUN mkdir -p /home/coder/.config/code-server/User && \
+    echo '{ "github.gitAuthentication": true, "github.useGitHubCLI": true }' \
+    > /home/coder/.config/code-server/User/settings.json && \
+    chown -R coder:coder /home/coder/.config
 
 
 COPY start.sh /usr/local/bin/start.sh
@@ -23,6 +27,9 @@ COPY ../api /opt/myantigravity-backend
 RUN python3 -m venv /home/coder/.venv && \
     /home/coder/.venv/bin/pip install --no-cache-dir \
     -r /opt/myantigravity-backend/requirements.txt
+
+RUN code-server --install-extension GitHub.vscode-pull-request-github
+
 
 # Install custom VS Code extension
 COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix

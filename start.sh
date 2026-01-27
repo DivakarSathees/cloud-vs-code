@@ -1,43 +1,62 @@
 #!/bin/bash
 set -e
 
-echo "Starting Python backend..."
-/home/coder/.venv/bin/python \
-  /opt/myantigravity-backend/server.py --port 8000 &
+export HOME=/home/coder
 
+echo "USER: $(whoami)"
+echo "HOME: $HOME"
+
+# ------------------ PREP ------------------
+mkdir -p /home/coder/.config
+chmod 700 /home/coder/.config
+
+# ------------------ BACKEND ------------------
+echo "Starting Python backend..."
+/home/coder/.venv/bin/python /opt/myantigravity-backend/server.py --port 8000 &
+
+# ------------------ REQUIRED ENV ------------------
+: "${GITHUB_USERNAME:?Missing GITHUB_USERNAME}"
+: "${GITHUB_TOKEN:?Missing GITHUB_TOKEN}"
+
+# ------------------ GITHUB CLI LOGIN (PERSISTED) ------------------
+echo "🔐 Logging into GitHub via gh (persistent)..."
+
+GH_TOKEN_VALUE="$GITHUB_TOKEN"
+unset GITHUB_TOKEN
+unset GH_TOKEN
+
+echo "$GH_TOKEN_VALUE" | gh auth login --hostname github.com --with-token
+
+# 🔑 THIS IS THE MAGIC FOR SOURCE CONTROL
+gh auth setup-git
+
+echo "✅ gh authentication configured"
+gh auth status
+
+# ------------------ WORKSPACE ------------------
 WORKSPACE_BASE="/home/coder/project/workspace"
 mkdir -p "$WORKSPACE_BASE"
 cd "$WORKSPACE_BASE"
 
 WORKSPACE_ID="workspace-$(date +%s)"
 REPO_NAME="$WORKSPACE_ID"
+REPO_URL="https://github.com/$GITHUB_USERNAME/$REPO_NAME.git"
 
-GITHUB_API="https://api.github.com"
-GITHUB_USERNAME="divakar3008200-cmyk"
-GITHUB_TOKEN="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"   # ⚠️ move to env later
-GITHUB_REPO_URL="https://github.com/$GITHUB_USERNAME/$REPO_NAME"
-
-# ----------- AUTO GITHUB LOGIN -----------
-if ! gh auth status >/dev/null 2>&1; then
-  echo "Signing VS Code into GitHub..."
-  echo "$GITHUB_TOKEN" | gh auth login --with-token
-fi
-
+# ------------------ CREATE REPO ------------------
 echo "Creating GitHub repo: $REPO_NAME"
 
 HTTP_CODE=$(curl -s -o /tmp/gh.json -w "%{http_code}" \
-  -X POST "$GITHUB_API/user/repos" \
-  -H "Authorization: token $GITHUB_TOKEN" \
+  -X POST https://api.github.com/user/repos \
+  -H "Authorization: token $GH_TOKEN_VALUE" \
   -H "Accept: application/vnd.github+json" \
   -d "{\"name\":\"$REPO_NAME\",\"private\":false}")
 
-cat /tmp/gh.json
-
 if [ "$HTTP_CODE" != "201" ]; then
-  echo "❌ GitHub repo creation failed"
+  cat /tmp/gh.json
   exit 1
 fi
 
+# ------------------ GIT INIT ------------------
 git config --global user.name "$GITHUB_USERNAME"
 git config --global user.email "$GITHUB_USERNAME@users.noreply.github.com"
 
@@ -45,26 +64,25 @@ git init
 git checkout -b main
 
 cat <<EOF > README.md
-# $REPO_NAME
+# $REPO_URL
 
-This workspace is automatically generated.
-
-GitHub Repository:
-$GITHUB_REPO_URL
+This workspace uses GitHub CLI authentication.
+VS Code Source Control is enabled.
 EOF
+
+chmod 444 README.md
 
 git add README.md
 git commit -m "Initial commit"
 
-# ---- DO NOT LET PUSH KILL THE SCRIPT ----
-set +e
-git remote add origin https://$GITHUB_USERNAME:$GITHUB_TOKEN@github.com/$GITHUB_USERNAME/$REPO_NAME.git
+# 🔑 IMPORTANT: NO TOKEN IN REMOTE URL
+git remote add origin "$REPO_URL"
 git push -u origin main
-git remote set-url origin https://github.com/$GITHUB_USERNAME/$REPO_NAME.git
-set -e
 
+echo "✅ Repo pushed using gh credential helper"
+
+# ------------------ START CODE-SERVER ------------------
 echo "Starting code-server..."
-
 exec code-server \
   --bind-addr 0.0.0.0:3002 \
   --auth none \

@@ -98,9 +98,14 @@ RUN echo "export CHROME_BIN=/usr/bin/chromium" >> /home/coder/.bashrc
 # COPY ../common/extensions/muhammad-sammy.csharp-2.23.15.vsix /tmp/muhammad-sammy.csharp-2.23.15.vsix
 # COPY ../common/extensions/vscode-thunder-client-2.20.0.vsix /tmp/vscode-thunder-client-2.20.0.vsix
 RUN apt-get update && apt-get install -y gh && apt-get clean
+RUN mkdir -p /home/coder/.config/code-server/User && \
+    echo '{ "github.gitAuthentication": true, "github.useGitHubCLI": true }' \
+    > /home/coder/.config/code-server/User/settings.json && \
+    chown -R coder:coder /home/coder/.config
 
 COPY start.sh /usr/local/bin/start.sh
-RUN chmod +x /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh && \
+    chown coder:coder /usr/local/bin/start.sh
 
 USER coder
 COPY ../api /opt/myantigravity-backend
@@ -111,6 +116,7 @@ RUN python3 -m venv /home/coder/.venv && \
     
 COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
 RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension GitHub.vscode-pull-request-github
 RUN code-server --install-extension angular.ng-template
 RUN code-server --install-extension dsznajder.es7-react-js-snippets
 RUN code-server --install-extension johnpapa.Angular2

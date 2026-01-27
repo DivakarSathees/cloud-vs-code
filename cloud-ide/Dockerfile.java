@@ -65,6 +65,12 @@ RUN npm install --ignore-scripts
 RUN apt-get install chromium -y
 ENV CHROME_BIN=/usr/bin/chromium
 RUN echo "export CHROME_BIN=/usr/bin/chromium" >> /home/coder/.bashrc
+RUN mkdir -p /home/coder/.config/code-server/User && \
+    echo '{ "github.gitAuthentication": true, "github.useGitHubCLI": true }' \
+    > /home/coder/.config/code-server/User/settings.json && \
+    chown -R coder:coder /home/coder/.config
+
+
 COPY start.sh /usr/local/bin/start.sh
 # RUN chmod +x /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh && \
@@ -81,6 +87,7 @@ RUN python3 -m venv /home/coder/.venv && \
 
 COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
 RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension GitHub.vscode-pull-request-github
 
 RUN code-server --install-extension vscjava.vscode-spring-initializr
 RUN code-server --install-extension Angular.ng-template
