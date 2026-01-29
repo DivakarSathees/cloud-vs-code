@@ -82,8 +82,17 @@ git push -u origin main
 echo "✅ Repo pushed using gh credential helper"
 
 # ------------------ START CODE-SERVER ------------------
-echo "Starting code-server..."
+# ------------------ START CODE-SERVER ------------------
+PORT=${PORT:-3002}
+echo "Starting code-server on PORT=$PORT"
+
 exec code-server \
-  --bind-addr 0.0.0.0:3002 \
+  --bind-addr 0.0.0.0:$PORT \
   --auth none \
   "$WORKSPACE_BASE"
+
+# echo "Starting code-server..."
+# exec code-server \
+#   --bind-addr 0.0.0.0:3002 \
+#   --auth none \
+#   "$WORKSPACE_BASE"
