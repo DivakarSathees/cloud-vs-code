@@ -28,7 +28,7 @@ app.get('/start/:stack', (req, res) => {
       --name ${containerName} \
       -p ${port}:3002 \
       -e GITHUB_USERNAME=divakar3008200-cmyk \
-      -e GITHUB_TOKEN=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 \
+      -e GITHUB_TOKEN=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 \
       -v ${volumeName}:/home/coder/project \
       ${image}
   `;
