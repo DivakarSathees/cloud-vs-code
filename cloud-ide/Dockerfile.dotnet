@@ -7,7 +7,7 @@ RUN mkdir -p /home/coder/project
 RUN sudo apt-get update && \
     sudo apt-get install -y python3 python3-pip python3-venv && \
     sudo apt-get clean
-EXPOSE 3000 8081 8080
+EXPOSE 3000 8081 8080 8443
 # ENV PORT 3000
 USER root
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -52,6 +52,7 @@ RUN echo "deb [arch=arm64] https://packages.microsoft.com/debian/11/prod bullsey
 #     libicu67 \
 #     && apt-get clean
 
+
 # Install .NET SDK using the official Microsoft installation script
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --version 6.0.419 --install-dir /usr/share/dotnet
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
@@ -71,25 +72,95 @@ RUN sudo apt-get update && \
     sudo apt install unzip &&\
     apt-get clean 
 
-RUN sudo apt --no-install-recommends install -y apt-transport-https dirmngr gnupg ca-certificates && sudo apt-get clean
+# RUN sudo apt --no-install-recommends install -y apt-transport-https dirmngr gnupg ca-certificates && sudo apt-get clean
 
-RUN sudo apt install -y apt-transport-https dirmngr gnupg ca-certificates
-RUN sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
-RUN echo "deb https://download.mono-project.com/repo/debian stable-buster main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
-RUN sudo apt-get --no-install-recommends -y install mono-devel && sudo apt-get clean
-RUN sudo curl -o /usr/local/bin/nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
-RUN sudo apt-get update -y && sudo apt-get clean
-RUN sudo apt-get --no-install-recommends install -y nunit && sudo apt-get clean
-COPY ../common/config.yaml /home/coder/.config/code-server/
+# RUN sudo apt install -y apt-transport-https dirmngr gnupg ca-certificates
+# RUN sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+# RUN echo "deb https://download.mono-project.com/repo/debian stable-buster main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
+# RUN sudo apt-get --no-install-recommends -y install mono-devel && sudo apt-get clean
+# RUN sudo curl -o /usr/local/bin/nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
+# RUN sudo apt-get update -y && sudo apt-get clean
+# RUN sudo apt-get --no-install-recommends install -y nunit && sudo apt-get clean
+# COPY ../common/config.yaml /home/coder/.config/code-server/
+
+# RUN apt-get update \
+#  && apt-get install -y --no-install-recommends mono-devel \
+#  && apt-get clean \
+#  && rm -rf /var/lib/apt/lists/*
+
+# ---- Base deps ----
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
+    dirmngr \
+    gnupg \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- Mono GPG key (modern way, NO apt-key) ----
+RUN gpg --keyserver hkp://keyserver.ubuntu.com:80 \
+    --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF \
+ && gpg --export 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF \
+    > /usr/share/keyrings/mono.gpg
+
+# ---- Mono repo ----
+RUN echo "deb [signed-by=/usr/share/keyrings/mono.gpg] https://download.mono-project.com/repo/debian stable-buster main" \
+    > /etc/apt/sources.list.d/mono-official-stable.list
+
+# ---- Install Mono + NUnit ----
+# RUN apt-get update \
+#  && apt-get install -y --no-install-recommends \
+#     mono-devel \
+#     nunit \
+#  && apt-get clean \
+#  && rm -rf /var/lib/apt/lists/*
+
+ # ---- Install Mono ----
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends mono-devel \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- Install NUnit via NuGet ----
+RUN curl -fsSL https://dist.nuget.org/win-x86-commandline/latest/nuget.exe \
+    -o /usr/local/bin/nuget.exe \
+ && chmod +x /usr/local/bin/nuget.exe
+
+
+# ---- NuGet CLI ----
+RUN curl -fsSL https://dist.nuget.org/win-x86-commandline/latest/nuget.exe \
+    -o /usr/local/bin/nuget.exe
+
 
 # RUN chown -R coder:coder /home/coder/.config
 # RUN sudo echo "coder:neouser@123" | chpasswd
 # RUN sudo usermod -aG sudo coder
 # RUN sudo rm /etc/sudoers.d/nopasswd
-RUN apt-get install chromium -y &&\
-    apt-get clean 
+
+
+# RUN apt-get install chromium -y &&\
+#     apt-get clean 
+# ENV CHROME_BIN=/usr/bin/chromium
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends chromium-common chromium-driver && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV CHROME_BIN=/usr/bin/chromium
+
 RUN echo "export CHROME_BIN=/usr/bin/chromium" >> /home/coder/.bashrc
+
+# Install dependency for tar.bz2
+RUN apt-get update && apt-get install -y bzip2 && apt-get clean
+
+# Install modern sqlcmd (ARM64 compatible)
+RUN curl -L https://github.com/microsoft/go-sqlcmd/releases/latest/download/sqlcmd-linux-arm64.tar.bz2 \
+    | tar -xj -C /usr/local/bin
+
+RUN sqlcmd --version
+
+
 # Adding Extensions
 # COPY ../common/extensions/afmicc.GetterAndSetterGenerator-1.0.3.vsix /tmp/afmicc.GetterAndSetterGenerator-1.0.3.vsix
 # COPY ../common/extensions/kreativ-software.csharpextensions-1.7.3.vsix /tmp/kreativ-software.csharpextensions-1.7.3.vsix
@@ -103,6 +174,11 @@ RUN mkdir -p /home/coder/.config/code-server/User && \
     > /home/coder/.config/code-server/User/settings.json && \
     chown -R coder:coder /home/coder/.config
 
+RUN mkdir -p /home/coder/project/workspace && \
+    chown coder:coder /home/coder/project/workspace
+COPY --chown=root:coder dotnettemplates/ /home/coder/project/workspace/dotnettemplates/
+# RUN chmod -R 555 /home/coder/project/workspace/dotnettemplates
+
 COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh && \
     chown coder:coder /usr/local/bin/start.sh
@@ -114,8 +190,12 @@ RUN python3 -m venv /home/coder/.venv && \
     /home/coder/.venv/bin/pip install --no-cache-dir \
     -r /opt/myantigravity-backend/requirements.txt
     
-COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
-RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
+# COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
+COPY ../common/neuralstack-0.0.2.vsix /tmp/neuralstack-0.0.2.vsix
+COPY cweijan.vscode-database-client2-8.4.4.vsix /tmp/cweijan.vscode-database-client2-8.4.4.vsix
+# RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension /tmp/neuralstack-0.0.2.vsix
+RUN code-server --install-extension /tmp/cweijan.vscode-database-client2-8.4.4.vsix
 RUN code-server --install-extension GitHub.vscode-pull-request-github
 RUN code-server --install-extension angular.ng-template
 RUN code-server --install-extension dsznajder.es7-react-js-snippets
@@ -144,6 +224,6 @@ RUN echo "source $NVM_DIR/nvm.sh" >> ~/.bashrc
 COPY ../common/.gitignore /home/coder/.gitignore
 RUN git config --global core.excludesFile '~/.gitignore'
 # ENTRYPOINT dumb-init fixuid -q /usr/bin/code-server --auth none --bind-addr 0.0.0.0:3000 /home/coder/project/workspace
-EXPOSE 3000 8081 8080
+EXPOSE 3000 8081 8080 8443
 ENTRYPOINT ["/bin/bash", "/usr/local/bin/start.sh"]
 # ENTRYPOINT ["/usr/local/bin/start.sh"]

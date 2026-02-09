@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  ide:
+    image: code-local-dotnet:latest
+    container_name: examly-ide
+    ports:
+      - "3000:3000"
+      - "8081:8081"
+      - "8080:8080"
+    environment:
+      GITHUB_USERNAME: divakar3008200-cmyk
+      GITHUB_TOKEN: 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
+      DB_HOST: sqlserver
+      DB_USER: sa
+      DB_PASSWORD: "examlyMssql@123"
+    depends_on:
+      - sqlserver
+    volumes:
+      - workspace-data:/home/coder/project/workspace
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: examly-sql
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "examlyMssql@123"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql-data:/var/opt/mssql
+
+volumes:
+  workspace-data:
+  sql-data:

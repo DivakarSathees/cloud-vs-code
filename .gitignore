@@ -12,3 +12,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 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
+
+docker buildx build \
+  --platform linux/amd64 \
+  -f Dockerfile.dotnet \
+  -t divakar77/code-server-aws-dotnet:latest \
+  --push .

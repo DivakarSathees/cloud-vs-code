@@ -10,7 +10,7 @@ RUN sudo apt-get update && \
 COPY ../common/config.yaml /home/coder/.config/code-server/
 COPY ../common/.gitignore /home/coder/.gitignore
 RUN git config --global core.excludesFile '~/.gitignore'
-EXPOSE 8080 3000 8081 
+EXPOSE 8080 3000 8081 8443
 # ENV PORT 3000
 USER root
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -70,6 +70,11 @@ RUN mkdir -p /home/coder/.config/code-server/User && \
     > /home/coder/.config/code-server/User/settings.json && \
     chown -R coder:coder /home/coder/.config
 
+RUN mkdir -p /home/coder/project/workspace && \
+    chown coder:coder /home/coder/project/workspace
+COPY --chown=root:coder javatemplates/ /home/coder/project/workspace/javatemplates/
+# RUN chmod -R 555 /home/coder/project/workspace/javatemplates
+
 
 COPY start.sh /usr/local/bin/start.sh
 # RUN chmod +x /usr/local/bin/start.sh
@@ -117,7 +122,7 @@ WORKDIR /home/coder/project/workspace
 ENV PATH /node_modules/karma-cli/bin:$PATH
 ENV SHELL /bin/bash
 RUN echo "source $NVM_DIR/nvm.sh" >> ~/.bashrc 
-EXPOSE 8080 3000 8081
+EXPOSE 8080 3000 8081 8443
 # ENTRYPOINT ["/usr/local/bin/start.sh"]
 ENTRYPOINT ["/bin/bash", "/usr/local/bin/start.sh"]
 

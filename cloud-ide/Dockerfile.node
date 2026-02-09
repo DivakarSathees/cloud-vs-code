@@ -15,6 +15,11 @@ RUN mkdir -p /home/coder/.config/code-server/User && \
     > /home/coder/.config/code-server/User/settings.json && \
     chown -R coder:coder /home/coder/.config
 
+RUN mkdir -p /home/coder/project/workspace && \
+    chown coder:coder /home/coder/project/workspace
+COPY --chown=root:coder dotnettemplates/ /home/coder/project/workspace/dotnettemplates/
+# RUN chmod -R 555 /home/coder/project/workspace/dotnettemplates
+
 
 COPY start.sh /usr/local/bin/start.sh
 # RUN chmod +x /usr/local/bin/start.sh
@@ -26,21 +31,30 @@ COPY ../api /opt/myantigravity-backend
 # RUN pip3 install --no-cache-dir -r /opt/myantigravity-backend/requirements.txt
 RUN python3 -m venv /home/coder/.venv && \
     /home/coder/.venv/bin/pip install --no-cache-dir \
-    -r /opt/myantigravity-backend/requirements.txt
+    -r /opt/myantigravity-backend/requirements.txt \
+    fastapi "uvicorn[standard]"
 
 RUN code-server --install-extension GitHub.vscode-pull-request-github
 
 
 # Install custom VS Code extension
 COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
+COPY ../common/fastapi-ws-ui-0.0.1.vsix /tmp/fastapi-ws-ui-0.0.1.vsix
 RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
+RUN code-server --install-extension /tmp/fastapi-ws-ui-0.0.1.vsix
 
 RUN mkdir -p /home/coder/.config/code-server && \
-    echo "bind-addr: 0.0.0.0:3002\n\
+    echo "bind-addr: 0.0.0.0:8443\n\
 auth: none" \
     > /home/coder/.config/code-server/config.yaml
 
+# RUN mkdir -p /home/coder/.config/code-server && \
+#     echo "bind-addr: 0.0.0.0:8443\n\
+# cert: true\n\
+# auth: none" \
+#     > /home/coder/.config/code-server/config.yaml
+
 WORKDIR /home/coder/project/workspace
-EXPOSE 3002 8081 8080
+EXPOSE 8443 8081 8080
 ENTRYPOINT ["/bin/bash", "/usr/local/bin/start.sh"]
 

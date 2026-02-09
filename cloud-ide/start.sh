@@ -21,9 +21,11 @@ echo "Starting Python backend..."
 # ------------------ GITHUB CLI LOGIN (PERSISTED) ------------------
 echo "🔐 Logging into GitHub via gh (persistent)..."
 
+
 GH_TOKEN_VALUE="$GITHUB_TOKEN"
 unset GITHUB_TOKEN
 unset GH_TOKEN
+echo "Token length: ${#GH_TOKEN_VALUE}"
 
 echo "$GH_TOKEN_VALUE" | gh auth login --hostname github.com --with-token
 
@@ -83,16 +85,16 @@ echo "✅ Repo pushed using gh credential helper"
 
 # ------------------ START CODE-SERVER ------------------
 # ------------------ START CODE-SERVER ------------------
-PORT=${PORT:-3002}
+PORT=${PORT:-8443}
 echo "Starting code-server on PORT=$PORT"
+
+# exec code-server \
+#   --bind-addr 0.0.0.0:$PORT \
+#   --cert \
+#   --auth none \
+#   "$WORKSPACE_BASE"
 
 exec code-server \
   --bind-addr 0.0.0.0:$PORT \
   --auth none \
   "$WORKSPACE_BASE"
-
-# echo "Starting code-server..."
-# exec code-server \
-#   --bind-addr 0.0.0.0:3002 \
-#   --auth none \
-#   "$WORKSPACE_BASE"
