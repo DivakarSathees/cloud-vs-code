@@ -34,7 +34,7 @@ app.get('/start/:stack', (req, res) => {
   //     --name ${containerName} \
   //     -p ${port}:3002 \
   //     -e GITHUB_USERNAME=divakar3008200-cmyk \
-  //     -e GITHUB_TOKEN=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 \
+  //     -e GITHUB_TOKEN=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 \
   //     -v ${volumeName}:/home/coder/project \
   //     ${image}
   // `;
@@ -47,7 +47,7 @@ app.get('/start/:stack', (req, res) => {
       --name ${sqlContainer} \
       --network ${network} \
       -e GITHUB_USERNAME=divakar3008200-cmyk \
-      -e GITHUB_TOKEN=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 \
+      -e GITHUB_TOKEN=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 \
       -e ACCEPT_EULA=Y \
       -e SA_PASSWORD=examlyMssql@123 \
       mcr.microsoft.com/mssql/server:2022-latest &&
@@ -57,7 +57,7 @@ app.get('/start/:stack', (req, res) => {
       --network ${network} \
       -p ${port}:8443 \
       -e GITHUB_USERNAME=divakar3008200-cmyk \
-      -e GITHUB_TOKEN=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 \
+      -e GITHUB_TOKEN=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 \
       -e DB_HOST=${sqlContainer} \
       -e DB_USER=sa \
       -e DB_PASSWORD=examlyMssql@123 \

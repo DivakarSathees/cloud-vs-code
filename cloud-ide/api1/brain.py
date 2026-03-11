@@ -375,63 +375,62 @@ def list_dir(path: str = "."):
         return f"❌ Error listing directory: {str(e)}"
 
 
-# @tool
-# async def create_scaffolding(template_path: str, project_name: str, scaffold_tests: bool = False):
-#     """
-#     Creates scaffolding from a template by copying the template structure and replacing 
-#     solution code with TODOs, while keeping infrastructure files intact.
+@tool
+async def create_scaffolding(template_path: str, project_name: str, scaffold_tests: bool = False):
+    """
+    Creates scaffolding from a template by copying the template structure and replacing 
+    solution code with TODOs, while keeping infrastructure files intact.
     
-#     THIS IS THE ONLY WAY TO CREATE SCAFFOLDING. Do not manually edit solution files.
+    THIS IS THE ONLY WAY TO CREATE SCAFFOLDING. Do not manually edit solution files.
     
-#     Args:
-#         template_path: Path to the template folder (e.g., 'templates/webapi' or 'template/ado')
-#         project_name: Name for the scaffolded project (will be created under 'scaffolding/' folder)
-#         scaffold_tests: If True, also scaffold test files; if False, keep tests as-is (default: False)
+    Args:
+        template_path: Path to the template folder (e.g., 'templates/webapi' or 'template/ado')
+        project_name: Name for the scaffolded project (will be created under 'scaffolding/' folder)
+        scaffold_tests: If True, also scaffold test files; if False, keep tests as-is (default: False)
     
-#     Workflow:
-#     1. Creates scaffolding/<project_name>/ folder
-#     2. Copies entire template structure to scaffolding folder
-#     3. Scans for solution files (.cs, .py, .java, .js, .ts, etc.)
-#     4. Replaces implementation code with TODO comments
-#     5. Keeps infrastructure files (package.json, *.csproj, run.sh, configs) intact
-#     6. Optionally scaffolds test files too
+    Workflow:
+    1. Creates scaffolding/<project_name>/ folder
+    2. Copies entire template structure to scaffolding folder
+    3. Scans for solution files (.cs, .py, .java, .js, .ts, etc.)
+    4. Replaces implementation code with TODO comments
+    5. Keeps infrastructure files (package.json, *.csproj, run.sh, configs) intact
+    6. Optionally scaffolds test files too
     
-#     Returns: Summary of scaffolded files and any errors
-#     """
-#     # from scaffolding_generator import create_scaffolding as do_scaffold, get_scaffolding_summary
+    Returns: Summary of scaffolded files and any errors
+    """
+    from scaffolding_generator import create_scaffolding as do_scaffold, get_scaffolding_summary
     
-#     workspace_path = get_workspace_path()
+    workspace_path = get_workspace_path()
     
-#     # Resolve template path
-#     if not os.path.isabs(template_path):
-#         template_path = os.path.join(workspace_path, template_path)
+    # Resolve template path
+    if not os.path.isabs(template_path):
+        template_path = os.path.join(workspace_path, template_path)
     
-#     # Scaffolding output path
-#     scaffolding_base = os.path.join(workspace_path, "scaffolding")
+    # Scaffolding output path
+    scaffolding_base = os.path.join(workspace_path, "scaffolding")
     
-#     await broadcast_log(f"🏗️ Creating scaffolding for: {project_name}")
-#     await broadcast_log(f"📂 From template: {template_path}")
-#     await broadcast_log(f"📁 Output: {scaffolding_base}/{project_name}")
+    await broadcast_log(f"🏗️ Creating scaffolding for: {project_name}")
+    await broadcast_log(f"📂 From template: {template_path}")
+    await broadcast_log(f"📁 Output: {scaffolding_base}/{project_name}")
     
-#     # Run scaffolding generation
-#     result = do_scaffold(template_path, scaffolding_base, project_name, scaffold_tests)
+    # Run scaffolding generation
+    result = do_scaffold(template_path, scaffolding_base, project_name, scaffold_tests)
     
-#     summary = get_scaffolding_summary(result)
+    summary = get_scaffolding_summary(result)
     
-#     if result['success']:
-#         await broadcast_log(f"✅ Scaffolding created: {result['output_path']}")
-#         await broadcast_log(f"   📝 {len(result['scaffolded_files'])} files scaffolded with TODOs")
-#         await broadcast_log(f"   📋 {len(result['copied_files'])} files copied as-is")
-#     else:
-#         await broadcast_log(f"❌ Scaffolding failed")
-#         for error in result['errors']:
-#             await broadcast_log(f"   ❌ {error}")
+    if result['success']:
+        await broadcast_log(f"✅ Scaffolding created: {result['output_path']}")
+        await broadcast_log(f"   📝 {len(result['scaffolded_files'])} files scaffolded with TODOs")
+        await broadcast_log(f"   📋 {len(result['copied_files'])} files copied as-is")
+    else:
+        await broadcast_log(f"❌ Scaffolding failed")
+        for error in result['errors']:
+            await broadcast_log(f"   ❌ {error}")
     
-#     return summary
+    return summary
 
 
-# tools = [execute_terminal, manage_file, find_file, list_dir, create_scaffolding]
-tools = [execute_terminal, manage_file, find_file, list_dir]
+tools = [execute_terminal, manage_file, find_file, list_dir, create_scaffolding]
 tool_node = ToolNode(tools)
 
 # -------------------------------------------------
@@ -466,32 +465,47 @@ AZURE_API_VERSION = "2024-12-01-preview"
 # 4. Create Azure LLM (Tool-Enabled)
 # -------------------------------------------------
 
-# System prompt for fully autonomous execution - understand and execute
-SYSTEM_PROMPT = """You are a fully autonomous coding assistant. You understand what the user wants and execute immediately.
+# System prompt for fully autonomous execution - think, plan, then execute
+SYSTEM_PROMPT = """You are a fully autonomous coding assistant. For EVERY user prompt you MUST think and plan first, then execute.
 
-🧠 UNDERSTAND FIRST, THEN ACT:
-1. Parse the user's request
-2. State your understanding: "🎯 I understand you want me to [action]"
-3. Execute immediately without asking
-4. Report results
+====================
+MANDATORY FOR EVERY USER PROMPT: THINK AND PLAN FIRST
+====================
 
-📋 RESPONSE FORMAT:
+You MUST do this for each and every user message – no exceptions:
+
+1. UNDERSTAND: Parse the user's request. State: "🎯 I understand you want me to [action]."
+
+2. THINK: Consider what is needed – files, commands, template, order of steps, risks. Do not skip this.
+
+3. PLAN: Before using any tool or running any command, state your plan in your response:
+   • "🤔 Thinking: [what the task involves]"
+   • "📋 Plan: Step 1 – [concrete action]. Step 2 – [concrete action]. Step 3 – [if needed]. ..."
+   • Be specific (e.g. "Step 1 – list_dir templates/ to find template. Step 2 – copy ROOT templates/webapi to workspace. Step 3 – implement solution in dotnetapp/.")
+
+4. EXECUTE: Only after you have stated the plan, run the tools/commands in that order.
+
+5. REPORT: Summarize what was done.
+
+Never skip the THINK and PLAN steps. Even for simple requests (e.g. "run app.py"), briefly state: "🤔 Thinking: need to run the script. 📋 Plan: execute_terminal with python app.py." then execute.
+
+📋 RESPONSE FORMAT (use for every prompt):
+
 "🎯 I understand you want me to [what user wants].
 
-📋 Proceeding with:
-• Step 1
-• Step 2
-• Step 3
+🤔 Thinking: [what this involves – files, structure, order]
+📋 Plan:
+• Step 1 – [specific action]
+• Step 2 – [specific action]
+• Step 3 – [if needed]
 
-[Execute all steps]
+[Now execute the steps with tools]
 
 ✅ Done: [summary of what was completed]"
 
-⚡ EXECUTION RULES:
-- NEVER ask questions
-- NEVER wait for confirmation
-- NEVER ask "Should I proceed?"
-- Just understand → plan → execute → report
+⚡ RULES:
+- For EACH user prompt: think and plan first, then execute. No exceptions.
+- NEVER ask questions or wait for confirmation; just think → plan → execute → report.
 
 🔍 UNDERSTANDING USER INTENT:
 
@@ -718,12 +732,11 @@ You: "🎯 I understand you want me to find all Python files.
 "✅ Done: Found 5 Python files: app.py, utils.py, config.py, test.py, main.py"
 
 REMEMBER: 
-- Understand what user wants
-- State your understanding clearly  
-- Execute immediately (ONLY via execute_terminal – command line only)
-- For project creation: ALWAYS check versions first via command line, then proceed
-- Never ask questions
-- Report results
+- For EVERY user prompt: THINK and PLAN first, then execute. Never skip thinking/planning.
+- Understand what user wants → State understanding → State plan (🤔 Thinking, 📋 Plan) → Execute → Report
+- Execute only via execute_terminal for commands; manage_file for read/write
+- For project creation: follow template-first workflow; plan copy of ROOT before copying
+- Never ask questions; report results
 
 📚 EXAMPLE: COMPLETE EDIT → BUILD → FIX FLOW:
 
@@ -775,7 +788,7 @@ Should I run the tests again? (yes/no)"
 
 ---
 
-REMEMBER: Think → Plan → Edit → Check Related → Build → Fix → Retry
+REMEMBER: For every prompt: Think → Plan (state steps) → Execute → Report. Think → Plan → Edit → Check Related → Build → Fix → Retry
 """
 
 llm = AzureChatOpenAI(

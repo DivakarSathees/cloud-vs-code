@@ -1,17 +1,18 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 import asyncio
 import json
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from brain import app as agent_app  # Import your LangGraph app
 from langchain_core.messages import HumanMessage, AIMessage
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 # Import shared utilities
 from utils import (
     broadcast_log, connected_clients, pending_changes, broadcast_file_change, 
-    process_file_change_queue, set_workspace_path, running_processes,
+    process_file_change_queue, set_workspace_path, set_current_request_message, running_processes,
     start_progress_session, end_progress_session, add_progress_task, update_progress_task,
     # New applied changes system
     applied_changes, session_changes, process_applied_change_queue, 
@@ -19,12 +20,25 @@ from utils import (
 )
 import os
 import signal
+import time
+import logging
 from datetime import datetime
 import re
+
+# Debug logging for agent steps (set level to logging.DEBUG for verbose)
+logger = logging.getLogger("agent")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 # Session tracking for markdown generation
 session_activities = {}  # session_id -> {files_changed: [], commands_run: [], request: str, response: str}
 current_session_id = None  # Track current active session
+
+# Agent run cancellation: when True for a session_id, the agent stream loop will stop
+agent_cancel_flags: Dict[str, bool] = {}
 
 def get_current_session_id():
     """Get the current active session ID"""
@@ -207,11 +221,15 @@ class ChatRequest(BaseModel):
 async def chat(request: ChatRequest):
     global current_session_id
     
+    logger.info("[STEP 1] Chat request received: message=%s ... workspace=%s scope_path=%s",
+                (request.message or "")[:80], getattr(request, "workspace_path", ""), getattr(request, "scope_path", ""))
+    
     # Get or create session
     session_id, session = get_or_create_session(request.session_id)
     
     # Set current session ID for tracking
     current_session_id = session_id
+    logger.info("[STEP 2] Session ready: session_id=%s", session_id)
     
     # Scaffolding: use workspace root so agent can read templates; target folder is scope_path
     message_to_store = request.message
@@ -233,6 +251,7 @@ async def chat(request: ChatRequest):
         effective_workspace = request.scope_path or request.workspace_path
         if effective_workspace:
             set_workspace_path(effective_workspace)
+            logger.info("[STEP 3] Workspace set: effective_workspace=%s", effective_workspace)
             if request.scope_path:
                 await broadcast_log(f"📁 Working in selected folder: {request.scope_path}")
             else:
@@ -255,93 +274,250 @@ async def chat(request: ChatRequest):
     
     await update_progress_task(analyze_task, "completed", "Request analyzed")
     
+    # Set current request message so tools (e.g. execute_terminal) can block template copy when user asked to write test cases
+    set_current_request_message(request.message)
+    logger.info("[STEP 4] Request context set: message_preview=%s", (request.message or "")[:60])
+
     # Create inputs with full conversation history and recursion limit
-    inputs = {"messages": session["messages"].copy()}
+    inputs = {
+        "messages": session["messages"].copy(),
+        "task_plan": "",
+        "current_phase_idx": 0,
+        "current_step_idx": 0,
+        "phase_status": "pending",
+        "phase_files": "[]",
+        "retry_count": 0,
+        "workspace_structure": "",
+    }
     config = {"recursion_limit": 150}  # Allow longer agent→tool→agent chains before stopping
     final_response = ""
-    
+    agent_stopped_by_user = False
+
+    # Allow this run to be cancelled via POST /stop-agent
+    agent_cancel_flags[session_id] = False
+
     # Track current task for updates
     current_task_id = await add_progress_task("Processing", "Agent is thinking...")
     tool_count = 0
 
-    async for output in agent_app.astream(inputs, config=config):
-        for key, value in output.items():
+    STREAM_CHUNK_TIMEOUT = 45  # If no chunk for this many seconds, broadcast "still thinking"
+    agent_stream_queue = asyncio.Queue()
 
-            # Stream agent messages
-            if key == "agent":
-                msg = value["messages"][-1].content
-                await broadcast_log(f"🤖 Agent: {msg}")
-                final_response = msg
-                
-                # Update progress based on message content
-                if "thinking" in msg.lower() or "planning" in msg.lower():
-                    await update_progress_task(current_task_id, "in_progress", "Planning approach...")
-                elif "reading" in msg.lower() or "analyzing" in msg.lower():
-                    await update_progress_task(current_task_id, "in_progress", "Analyzing files...")
-                elif "should i proceed" in msg.lower() or "(yes/no)" in msg.lower():
-                    await update_progress_task(current_task_id, "completed", "Waiting for confirmation")
-                    current_task_id = await add_progress_task("Awaiting confirmation", "Please confirm the action")
+    async def _stream_producer():
+        try:
+            logger.info("[STEP 5] Agent stream started (astream)")
+            async for output in agent_app.astream(inputs, config=config):
+                await agent_stream_queue.put(("chunk", output))
+        except Exception as e:
+            logger.exception("[STEP] Agent stream error: %s", e)
+            await agent_stream_queue.put(("error", e))
+        finally:
+            await agent_stream_queue.put(("done", None))
 
-            # Stream tool execution
-            if key == "action":
-                tool_count += 1
-                tool_messages = value.get("messages", [])
-                
-                # Get tool name from the message
-                tool_name = "Tool"
-                tool_result = ""
-                if tool_messages:
-                    last_msg = tool_messages[-1]
-                    if hasattr(last_msg, 'name'):
-                        tool_name = last_msg.name
-                    if hasattr(last_msg, 'content'):
-                        tool_result = str(last_msg.content)[:100]
-                
-                await update_progress_task(current_task_id, "completed", f"Completed: {tool_name}")
-                
-                # Create new task for next action
-                if "execute_terminal" in str(tool_name):
-                    current_task_id = await add_progress_task("Running command", "Executing terminal command...")
-                elif "manage_file" in str(tool_name):
-                    current_task_id = await add_progress_task("File operation", "Managing files...")
-                elif "find_file" in str(tool_name):
-                    current_task_id = await add_progress_task("Searching files", "Looking for files...")
-                else:
-                    current_task_id = await add_progress_task("Processing", "Continuing...")
-                
-                await broadcast_log("⚙️ Tool executed")
-                # Process any queued file changes (both pending and applied)
-                await process_file_change_queue()
-                await process_applied_change_queue()
+    async def run_agent():
+        nonlocal final_response, agent_stopped_by_user, current_task_id, tool_count
+        producer = asyncio.create_task(_stream_producer())
+        print(f"🔥 Producer: {producer}")
+        try:
+            while True:
+                try:
+                    kind, payload = await asyncio.wait_for(
+                        agent_stream_queue.get(),
+                        timeout=STREAM_CHUNK_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    await broadcast_log("⏳ Agent is still thinking… (this can take a few minutes for large tasks)")
+                    await update_progress_task(current_task_id, "in_progress", "Agent is generating response…")
+                    continue
+                if kind == "done":
+                    break
+                if kind == "error":
+                    raise payload
+                output = payload
+                # Check if user requested to stop the agent
+                if agent_cancel_flags.get(session_id):
+                    agent_stopped_by_user = True
+                    final_response = "⏹️ Agent run stopped by user."
+                    await broadcast_log("⏹️ Agent run stopped by user.")
+                    await update_progress_task(current_task_id, "cancelled", "Stopped by user")
+                    break
 
-    # Mark final task as complete
-    await update_progress_task(current_task_id, "completed", "Done")
-    
-    # End progress session
-    await end_progress_session()
+                for key, value in output.items():
+                    # Stream planner output (task plan)
+                    if key == "planner":
+                        plan_msg = value.get("messages", [{}])
+                        if plan_msg:
+                            plan_content = plan_msg[-1].content if hasattr(plan_msg[-1], 'content') else str(plan_msg[-1])
+                            await broadcast_log(f"📋 Task Planner: Plan created: {plan_content}")
+                            await update_progress_task(current_task_id, "completed", "Task plan created")
+                            current_task_id = await add_progress_task("Executing plan", "Following task plan...")
 
-    # Add agent response to history
-    if final_response:
-        session["messages"].append(AIMessage(content=final_response))
-        session["updated_at"] = datetime.now().isoformat()
-    
-    # Create markdown summary of this request
-    summary_path = create_request_summary_markdown(
-        session_id=session_id,
-        request_text=request.message,
-        response_text=final_response,
-        workspace_path=request.workspace_path
-    )
-    
-    if summary_path:
-        await broadcast_log(f"📄 Summary saved: {os.path.basename(summary_path)}")
-    
-    return {
-        "response": final_response,
-        "session_id": session_id,
-        "session_title": session["title"],
-        "summary_file": summary_path
-    }
+                    # Stream agent messages
+                    if key == "agent":
+                        msg = value["messages"][-1].content
+                        # Track phase/step progress from state updates
+                        phase_idx = value.get("current_phase_idx")
+                        stp_idx = value.get("current_step_idx")
+                        phase_sts = value.get("phase_status", "")
+                        step_info = ""
+                        if phase_idx is not None and stp_idx is not None:
+                            step_info = f" [Phase {phase_idx + 1}, Step {stp_idx + 1}]"
+                            if phase_sts:
+                                step_info += f" ({phase_sts})"
+                        await broadcast_log(f"🤖 Agent{step_info}: {msg}")
+                        final_response = msg
+                        
+                        # Update progress based on message content
+                        if "thinking" in msg.lower() or "planning" in msg.lower():
+                            await update_progress_task(current_task_id, "in_progress", f"Planning approach...{step_info}")
+                        elif "reading" in msg.lower() or "analyzing" in msg.lower():
+                            await update_progress_task(current_task_id, "in_progress", f"Analyzing files...{step_info}")
+                        elif "should i proceed" in msg.lower() or "(yes/no)" in msg.lower():
+                            await update_progress_task(current_task_id, "completed", "Waiting for confirmation")
+                            current_task_id = await add_progress_task("Awaiting confirmation", "Please confirm the action")
+
+                    # Stream tool execution (supports multi-agent: workspace_action, file_action, etc.)
+                    if key == "action" or key.endswith("_action"):
+                        tool_count += 1
+                        tool_messages = value.get("messages", [])
+                        
+                        # Get tool name from the message
+                        tool_name = "Tool"
+                        tool_result = ""
+                        if tool_messages:
+                            last_msg = tool_messages[-1]
+                            if hasattr(last_msg, 'name'):
+                                tool_name = last_msg.name
+                            if hasattr(last_msg, 'content'):
+                                tool_result = str(last_msg.content)[:100]
+                        
+                        await update_progress_task(current_task_id, "completed", f"Completed: {tool_name}")
+                        logger.info("[STEP 6] Tool executed: tool=%s result_preview=%s", tool_name, (tool_result or "")[:80])
+                        
+                        # Create new task for next action
+                        if "execute_terminal" in str(tool_name):
+                            current_task_id = await add_progress_task("Running command", "Executing terminal command...")
+                        elif "manage_file" in str(tool_name):
+                            current_task_id = await add_progress_task("File operation", "Managing files...")
+                        elif "find_file" in str(tool_name):
+                            current_task_id = await add_progress_task("Searching files", "Looking for files...")
+                        else:
+                            current_task_id = await add_progress_task("Processing", "Continuing...")
+                        
+                        await broadcast_log("⚙️ Tool executed")
+                        # Process any queued file changes (both pending and applied)
+                        await process_file_change_queue()
+                        await process_applied_change_queue()
+
+                    # Stream phase orchestration events
+                    if key == "phase_advance":
+                        msgs = value.get("messages", [])
+                        if msgs and hasattr(msgs[-1], 'content'):
+                            phase_msg = msgs[-1].content
+                            p_idx = value.get("current_phase_idx")
+                            s_idx = value.get("current_step_idx")
+                            p_info = f" [Phase {p_idx + 1}, Step {s_idx + 1}]" if p_idx is not None and s_idx is not None else ""
+                            await broadcast_log(f"⚡ Phase Advance{p_info}: {phase_msg}")
+
+                    if key == "phase_review_build":
+                        msgs = value.get("messages", [])
+                        if msgs and hasattr(msgs[-1], 'content'):
+                            rb_msg = msgs[-1].content
+                            p_sts = value.get("phase_status", "")
+                            await broadcast_log(f"🔧 Phase Review/Build ({p_sts}): {rb_msg[:200]}")
+                            if "failed" in p_sts.lower():
+                                await update_progress_task(current_task_id, "in_progress", "Build failed — fixing...")
+                            elif "completed" in p_sts.lower():
+                                await update_progress_task(current_task_id, "completed", "Phase complete")
+                                current_task_id = await add_progress_task("Next phase", "Starting next phase...")
+
+                    if key == "integration_validator":
+                        msgs = value.get("messages", [])
+                        if msgs and hasattr(msgs[-1], 'content'):
+                            val_msg = msgs[-1].content
+                            await broadcast_log(f"🔍 Integration Validation: {val_msg[:300]}")
+                            await update_progress_task(current_task_id, "completed", "Integration validated")
+                            current_task_id = await add_progress_task("Final report", "Generating final report...")
+        finally:
+            producer.cancel()
+            try:
+                await producer
+            except asyncio.CancelledError:
+                pass
+            # Clear request context so next run does not use this request's message
+            set_current_request_message("")
+            logger.info("[STEP 7] Agent run finished; request context cleared")
+
+        # Clear cancel flag so next run is not immediately cancelled
+        agent_cancel_flags.pop(session_id, None)
+
+        # Mark final task as complete (unless already updated by stop)
+        if not agent_stopped_by_user:
+            await update_progress_task(current_task_id, "completed", "Done")
+        
+        # End progress session
+        await end_progress_session()
+
+        # Add agent response to history
+        if final_response:
+            session["messages"].append(AIMessage(content=final_response))
+            session["updated_at"] = datetime.now().isoformat()
+        
+        # Create markdown summary of this request
+        summary_path = create_request_summary_markdown(
+            session_id=session_id,
+            request_text=request.message,
+            response_text=final_response,
+            workspace_path=request.workspace_path
+        )
+        
+        if summary_path:
+            await broadcast_log(f"📄 Summary saved: {os.path.basename(summary_path)}")
+        
+        return {
+            "response": final_response,
+            "session_id": session_id,
+            "session_title": session["title"],
+            "summary_file": summary_path
+        }
+
+    # Run agent in background and stream response with keep-alive so the connection is not dropped
+    task = asyncio.create_task(run_agent())
+    KEEPALIVE_INTERVAL = 15
+
+    async def stream_body():
+        next_keepalive = time.monotonic() + KEEPALIVE_INTERVAL
+        while not task.done():
+            await asyncio.sleep(1)
+            if time.monotonic() >= next_keepalive:
+                yield b"\n"
+                next_keepalive = time.monotonic() + KEEPALIVE_INTERVAL
+        await task
+        result = task.result()
+        yield (json.dumps(result) + "\n").encode("utf-8")
+
+    return StreamingResponse(stream_body(), media_type="text/plain; charset=utf-8")
+
+
+class StopAgentRequest(BaseModel):
+    """Optional session_id to stop; if omitted, stops the current session's agent run."""
+    session_id: str = None
+
+
+@app.post("/stop-agent")
+async def stop_agent(request: Optional[StopAgentRequest] = None):
+    """
+    Request to stop the running agent for the given (or current) session.
+    The agent stream loop checks this flag each iteration and will break out,
+    then return a response indicating the run was stopped by the user.
+    Call with no body to stop current session, or {"session_id": "..."} to stop a specific session.
+    """
+    sid = (request.session_id if request and getattr(request, "session_id", None) else None) or current_session_id
+    if not sid:
+        return {"ok": False, "message": "No session ID and no current session"}
+    agent_cancel_flags[sid] = True
+    await broadcast_log("⏹️ Stop requested for agent run.")
+    return {"ok": True, "message": "Stop requested", "session_id": sid}
 
 
 # @app.websocket("/ws/logs")

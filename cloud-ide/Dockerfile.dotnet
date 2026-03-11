@@ -31,11 +31,11 @@ RUN source "$NVM_DIR"/nvm.sh \
     && nvm install "$NODE_VERSION_16" \
     && nvm install "$NODE_VERSION_18" \
     && nvm install "$NODE_VERSION_20" \
-    && nvm alias default "$NODE_VERSION_14" \
+    && nvm alias default "$NODE_VERSION_20" \
     && nvm use default
 # add node and npm to path so the commands are available
-ENV NODE_PATH $NVM_DIR/v$NODE_VERSION_14/lib/node_modules
-ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION_14/bin:$PATH
+ENV NODE_PATH $NVM_DIR/v$NODE_VERSION_20/lib/node_modules
+ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION_20/bin:$PATH
 # confirm installation
 RUN node -v
 RUN wget --max-redirect=0 https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
@@ -177,6 +177,7 @@ RUN mkdir -p /home/coder/.config/code-server/User && \
 RUN mkdir -p /home/coder/project/workspace && \
     chown coder:coder /home/coder/project/workspace
 COPY --chown=root:coder dotnettemplates/ /home/coder/project/workspace/dotnettemplates/
+COPY --chown=root:coder description_templates/ /home/coder/project/workspace/description_templates/
 # RUN chmod -R 555 /home/coder/project/workspace/dotnettemplates
 
 COPY start.sh /usr/local/bin/start.sh
@@ -191,10 +192,10 @@ RUN python3 -m venv /home/coder/.venv && \
     -r /opt/myantigravity-backend/requirements.txt
     
 # COPY ../common/neuralstack-0.0.1.vsix /tmp/neuralstack-0.0.1.vsix
-COPY ../common/neuralstack-0.0.2.vsix /tmp/neuralstack-0.0.2.vsix
+COPY ../common/neuralstack-0.0.5.vsix /tmp/neuralstack-0.0.5.vsix
 COPY cweijan.vscode-database-client2-8.4.4.vsix /tmp/cweijan.vscode-database-client2-8.4.4.vsix
 # RUN code-server --install-extension /tmp/neuralstack-0.0.1.vsix
-RUN code-server --install-extension /tmp/neuralstack-0.0.2.vsix
+RUN code-server --install-extension /tmp/neuralstack-0.0.5.vsix
 RUN code-server --install-extension /tmp/cweijan.vscode-database-client2-8.4.4.vsix
 RUN code-server --install-extension GitHub.vscode-pull-request-github
 RUN code-server --install-extension angular.ng-template
